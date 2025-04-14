@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grants Assistant Chatbot</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 2rem; }
+    #chatBox { background: #fff; padding: 1rem; height: 300px; overflow-y: auto; border: 1px solid #ccc; white-space: pre-wrap; }
+    input, button { font-size: 16px; padding: 10px; width: 100%; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>🤖 Grants Assistant Chatbot</h1>
+<input type="text" id="queryInput" placeholder="Ask about grants..." />
+<button onclick="sendQuery()">Send</button>
+<div id="chatBox">Ready to chat...</div>
+
+<script>
+  const sessionId = crypto.randomUUID();
+  const country = "canada";
+
+  async function sendQuery() {
+    const input = document.getElementById("queryInput");
+    const chatBox = document.getElementById("chatBox");
+    const query = input.value.trim();
+    if (!query) return;
+
+    chatBox.innerHTML += `\n🧑‍💼 You: ${query}\n`;
+
+    const url = `http://localhost:8000/chat_stream/grants/${sessionId}/${country}/${encodeURIComponent(query)}`;
+    const eventSource = new EventSource(url);
+
+    let botReply = "";
+
+    eventSource.onmessage = function(event) {
+      const text = event.data;
+      botReply += text;
+      chatBox.innerHTML = chatBox.innerHTML.replace(/🤖 Bot:.*$/, "") + `🤖 Bot: ${botReply}`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    };
+
+    eventSource.onerror = function(err) {
+      eventSource.close();
+      chatBox.innerHTML += "\n⚠️ Error retrieving response.";
+    };
+
+    input.value = "";
+  }
+</script>
+
+</body>
+</html>
