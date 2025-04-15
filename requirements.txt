@@ -4,4 +4,8 @@ pandas
 langchain
 langchain-community
 sentence-transformers
+langchain-huggingface
 ollama
+plotly
+scikit-learn
+numpy
