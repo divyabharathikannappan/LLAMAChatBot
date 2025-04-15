@@ -10,11 +10,9 @@ from langchain_community.llms import Ollama
 
 from interaction import interact_with_user
 
-# === Logging setup ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("grants-assistant")
 
-# === FastAPI setup ===
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -28,67 +26,48 @@ app.add_middleware(
 def root():
     return {"message": "Grants Assistant is running"}
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
 @app.get("/ui", response_class=HTMLResponse)
 def serve_ui():
-    html_path = Path("grants_chat_ui.html")
+    html_path = Path("index.html")
     if not html_path.exists():
         return HTMLResponse("<h2>UI file not found.</h2>", status_code=404)
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"), status_code=200)
 
-# === Global state ===
 chat_sessions = {}
 
-# === Load models ===
-try:
-    logger.info("Loading interaction LLM...")
-    interaction_llm = Ollama(model="llama3", temperature=0.1)
-    logger.info("Interaction LLM loaded")
+interaction_llm = Ollama(model="llama3", temperature=0.1)
+response_llm = Ollama(model="llama3", temperature=0.1)
 
-    logger.info("Loading response LLM...")
-    response_llm = Ollama(model="llama3", temperature=0.1)
-    logger.info("Response LLM loaded")
-except Exception as e:
-    logger.error(f"Error loading LLMs: {e}")
-    raise
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={"device": "cpu"},
+    encode_kwargs={"normalize_embeddings": True}
+)
+doc_db = Chroma(persist_directory="./embeddings", embedding_function=embeddings)
 
-# === Load Chroma vector DB ===
-try:
-    logger.info("Initializing embedding function...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True}
-    )
-
-    logger.info("Loading Chroma DB...")
-    doc_db = Chroma(persist_directory="./embeddings", embedding_function=embeddings)
-    logger.info("Chroma DB loaded with %d documents", doc_db._collection.count())
-except Exception as e:
-    logger.error(f"Failed to load Chroma DB: {e}")
-    raise
-
-# === System Prompts ===
-interaction_system_prompt = """
-You are a helpful grants assistant. Your goal is to help users find relevant grants by collecting key information.
-"""
-
-response_system_prompt = """
-You are a grants assistant. Provide matching grants using the retrieved context.
-"""
-
-# === Dummy RAG logic for now ===
+interaction_system_prompt = "You are a helpful grants assistant. Ask questions to collect business type, location, and funding purpose. Then generate a SEARCH QUERY."
+response_system_prompt = "You are a grants assistant chatbot. Recommend grants based on context and query."
 async def retrieval_answer(session_id: str, query: str, country: str = "canada"):
+    logger = logging.getLogger("grants-assistant")
+
     logger.info(f"[{session_id}] Performing RAG on: {query}")
     retriever = doc_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.get_relevant_documents(query)
-    combined = "\n\n".join([doc.page_content for doc in docs]) or "No grants found."
-    yield json.dumps({"data": combined})
+    logger.info(f"[{session_id}] Retrieved {len(docs)} document(s)")
 
-# === Chat endpoint ===
+    if not docs:
+        yield "Sorry, I couldn’t find any relevant grants for that search.\n\n"
+        yield "[DONE]\n\n"
+        return
+
+    for doc in docs:
+        content = doc.page_content.strip().replace("\n", " ")
+        if not content.startswith("Grant Name:"):
+            content = "Grant Name: Unnamed Grant " + content
+        logger.info(f"[{session_id}] Grant doc: {content[:200]}...")
+        yield f"data: {content}\n\n"
+
+    yield "[DONE]\n\n"
 @app.get("/chat_stream/grants/{session_id}/{country}/{query}")
 def chat_stream(session_id: str, country: str, query: str):
     logger.info(f"[{session_id}] Incoming query: {query}")
