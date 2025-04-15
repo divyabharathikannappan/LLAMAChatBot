@@ -5,7 +5,7 @@ from pathlib import Path
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.schema import Document
-
+from visualizer import visualize
 # Define constants
 CSV_PATH = "dataset.csv"
 PERSIST_DIR = "embeddings"
@@ -44,8 +44,10 @@ def generate_chroma_db():
     )
 
     vectordb = Chroma.from_documents(documents, embedding, persist_directory=PERSIST_DIR)
-    vectordb.persist()
+    # vectordb.persist() # Removed as Chroma automatically persists since 0.4.x
     print(f"[SUCCESS] Chroma DB saved to `{PERSIST_DIR}`")
+    visualize(vectordb)
+        
 
 if __name__ == "__main__":
     generate_chroma_db()
